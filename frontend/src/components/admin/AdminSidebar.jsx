@@ -7,7 +7,7 @@ const menuItems = [
   { id: 'keluar', label: 'Keluar', icon: LogOut, badge: null },
 ]
 
-export default function AdminSidebar({ activeMenu, onMenuClick, isOpen, onClose }) {
+export default function AdminSidebar({ activeMenu, onMenuClick, isOpen, onClose, unreadCount = 0 }) {
   return (
     <>
       {/* Overlay for mobile */}
@@ -73,7 +73,13 @@ export default function AdminSidebar({ activeMenu, onMenuClick, isOpen, onClose 
                   strokeWidth={isActive ? 2.5 : 2}
                 />
                 <span className="flex-1 text-left">{item.label}</span>
-                {item.badge !== null && (
+                {item.id === 'pesan-masuk' ? (
+                  unreadCount > 0 && (
+                    <span className="w-5 h-5 bg-[#22c55e] rounded-full flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0 animate-scaleIn">
+                      {unreadCount}
+                    </span>
+                  )
+                ) : item.badge !== null && (
                   <span className="w-5 h-5 bg-[#22c55e] rounded-full flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0">
                     {item.badge}
                   </span>

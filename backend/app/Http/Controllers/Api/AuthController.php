@@ -3,63 +3,113 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\LoginRequest;
-use App\Http\Requests\RegisterRequest;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
     /**
      * Register user baru
      */
-    public function register(RegisterRequest $request): JsonResponse
+    public function register(Request $request): JsonResponse
     {
-        // Simpan user ke database (password di-hash)
-        $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => Hash::make($request->password),
+        // Validasi manual (tanpa FormRequest agar lebih aman)
+        $validator = Validator::make($request->all(), [
+            'name'     => 'required|string|max:255',
+            'email'    => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:6|confirmed',
+        ], [
+            'name.required'      => 'Nama wajib diisi',
+            'email.required'     => 'Email wajib diisi',
+            'email.email'        => 'Format email tidak valid',
+            'email.unique'       => 'Email sudah terdaftar',
+            'password.required'  => 'Password wajib diisi',
+            'password.min'       => 'Password minimal 6 karakter',
+            'password.confirmed' => 'Konfirmasi password tidak cocok',
         ]);
 
-        // Buat token login (Sanctum)
-        $token = $user->createToken('auth_token')->plainTextToken;
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Data tidak valid',
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
 
-        // Response ke frontend
-        return response()->json([
-            'message' => 'Registrasi berhasil',
-            'user'    => $user,
-            'token'   => $token,
-        ], 201); // 201 = berhasil create
+        try {
+            // Buat user baru
+            $user = User::create([
+                'name'     => $request->name,
+                'email'    => $request->email,
+                'password' => Hash::make($request->password),
+            ]);
+
+            // Buat token Sanctum
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return response()->json([
+                'message' => 'Registrasi berhasil',
+                'user'    => $user,
+                'token'   => $token,
+            ], 201);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Terjadi kesalahan server: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
      * Login user
      */
-    public function login(LoginRequest $request): JsonResponse
+    public function login(Request $request): JsonResponse
     {
-        // Cek email & password
-        if (!Auth::attempt($request->only('email', 'password'))) {
+        // Validasi manual
+        $validator = Validator::make($request->all(), [
+            'email'    => 'required|email',
+            'password' => 'required|string',
+        ], [
+            'email.required'    => 'Email wajib diisi',
+            'email.email'       => 'Format email tidak valid',
+            'password.required' => 'Password wajib diisi',
+        ]);
+
+        if ($validator->fails()) {
             return response()->json([
-                'message' => 'Email atau password salah',
-            ], 401); // 401 = unauthorized
+                'message' => 'Data tidak valid',
+                'errors'  => $validator->errors(),
+            ], 422);
         }
 
-        // Ambil data user
-        $user = User::where('email', $request->email)->firstOrFail();
+        try {
+            // Cek kredensial
+            if (!Auth::attempt($request->only('email', 'password'))) {
+                return response()->json([
+                    'message' => 'Email atau password salah',
+                ], 401);
+            }
 
-        // Buat token baru
-        $token = $user->createToken('auth_token')->plainTextToken;
+            // Ambil user
+            $user = User::where('email', $request->email)->firstOrFail();
 
-        // Response
-        return response()->json([
-            'message' => 'Login berhasil',
-            'user'    => $user,
-            'token'   => $token,
-        ]);
+            // Buat token baru
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            return response()->json([
+                'message' => 'Login berhasil',
+                'user'    => $user,
+                'token'   => $token,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Terjadi kesalahan server: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -67,12 +117,17 @@ class AuthController extends Controller
      */
     public function logout(Request $request): JsonResponse
     {
-        // Hapus token yang sedang dipakai
-        $request->user()->currentAccessToken()->delete();
+        try {
+            $request->user()->currentAccessToken()->delete();
 
-        return response()->json([
-            'message' => 'Logout berhasil',
-        ]);
+            return response()->json([
+                'message' => 'Logout berhasil',
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Logout gagal',
+            ], 500);
+        }
     }
 
     /**
@@ -80,7 +135,6 @@ class AuthController extends Controller
      */
     public function user(Request $request): JsonResponse
     {
-        // Return data user dari token
         return response()->json([
             'user' => $request->user(),
         ]);
